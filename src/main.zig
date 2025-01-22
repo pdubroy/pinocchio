@@ -53,10 +53,10 @@ const HALF_CARRY_FLAG_BYTE_POSITION: u8 = 5;
 const CARRY_FLAG_BYTE_POSITION: u8 = 4;
 
 const FlagsRegister = struct {
-    zero: bool,
-    subtract: bool,
-    half_carry: bool,
-    carry: bool,
+    zero: bool = false,
+    subtract: bool = false,
+    half_carry: bool = false,
+    carry: bool = false,
 
     pub fn toU8(self: FlagsRegister) u8 {
         return (@as(u8, if (self.zero) 1 else 0) << ZERO_FLAG_BYTE_POSITION) |
