@@ -1,0 +1,3 @@
+[tasks]
+build = "zig build"
+test = "zig build test"
