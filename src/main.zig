@@ -52,21 +52,21 @@ const SUBTRACT_FLAG_BYTE_POSITION: u8 = 6;
 const HALF_CARRY_FLAG_BYTE_POSITION: u8 = 5;
 const CARRY_FLAG_BYTE_POSITION: u8 = 4;
 
-const FlagsRegister = struct {
+const Flags = struct {
     zero: bool = false,
     subtract: bool = false,
     half_carry: bool = false,
     carry: bool = false,
 
-    pub fn toU8(self: FlagsRegister) u8 {
+    pub fn toU8(self: Flags) u8 {
         return (@as(u8, if (self.zero) 1 else 0) << ZERO_FLAG_BYTE_POSITION) |
             (@as(u8, if (self.subtract) 1 else 0) << SUBTRACT_FLAG_BYTE_POSITION) |
             (@as(u8, if (self.half_carry) 1 else 0) << HALF_CARRY_FLAG_BYTE_POSITION) |
             (@as(u8, if (self.carry) 1 else 0) << CARRY_FLAG_BYTE_POSITION);
     }
 
-    pub fn fromU8(byte: u8) FlagsRegister {
-        return FlagsRegister{
+    pub fn fromU8(byte: u8) Flags {
+        return Flags{
             .zero = ((byte >> ZERO_FLAG_BYTE_POSITION) & 0b1) != 0,
             .subtract = ((byte >> SUBTRACT_FLAG_BYTE_POSITION) & 0b1) != 0,
             .half_carry = ((byte >> HALF_CARRY_FLAG_BYTE_POSITION) & 0b1) != 0,
@@ -120,15 +120,20 @@ test "16-bit registers" {
     try std.testing.expectEqual(regs.getBC(), 0x3456);
     try std.testing.expectEqual(regs.getDE(), 0x789A);
     try std.testing.expectEqual(regs.getAF(), 0x12BC);
+
+    regs.setHL(0x1234);
+    try std.testing.expectEqual(regs.h, 0x12);
+    try std.testing.expectEqual(regs.l, 0x34);
+    try std.testing.expectEqual(regs.getHL(), 0x1234);
 }
 
 test "flags register" {
-    var flags = FlagsRegister{
+    var flags = Flags{
         .zero = true,
         .subtract = false,
         .half_carry = true,
         .carry = false,
     };
     try std.testing.expectEqual(flags.toU8(), 0b10100000);
-    try std.testing.expectEqual(flags, FlagsRegister.fromU8(0b10100000));
+    try std.testing.expectEqual(flags, Flags.fromU8(0b10100000));
 }
