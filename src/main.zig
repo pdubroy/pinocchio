@@ -6,7 +6,10 @@ const Registers = struct {
     c: u8 = 0,
     d: u8 = 0,
     e: u8 = 0,
-    f: u8 = 0,
+    f: packed union {
+        raw: u8,
+        flags: Flags,
+    } = .{ .raw = 0 },
     h: u8 = 0,
     l: u8 = 0,
 
@@ -20,7 +23,7 @@ const Registers = struct {
     }
 
     pub fn getAF(self: *const Registers) u16 {
-        return (@as(u16, self.a) << 8) | self.f;
+        return (@as(u16, self.a) << 8) | self.f.raw;
     }
 
     pub fn setAF(self: *Registers, value: u16) void {
@@ -47,31 +50,71 @@ const Registers = struct {
     }
 };
 
+//
+// https://zig.news/edyu/zig-unionenum-wtf-is-switchunionenum-2e02
 const ZERO_FLAG_BYTE_POSITION: u8 = 7;
 const SUBTRACT_FLAG_BYTE_POSITION: u8 = 6;
 const HALF_CARRY_FLAG_BYTE_POSITION: u8 = 5;
-const CARRY_FLAG_BYTE_POSITION: u8 = 4;
+const CARRY_FLAG_SHIFT: u8 = 4;
 
-const Flags = struct {
-    zero: bool = false,
-    subtract: bool = false,
-    half_carry: bool = false,
-    carry: bool = false,
+const Flags = packed struct {
+    _: u4 = 0,
+    carry: u1 = false,
+    halfCarry: u1 = false,
+    subtract: u1 = false,
+    zero: u1 = false,
+};
 
-    pub fn toU8(self: Flags) u8 {
-        return (@as(u8, if (self.zero) 1 else 0) << ZERO_FLAG_BYTE_POSITION) |
-            (@as(u8, if (self.subtract) 1 else 0) << SUBTRACT_FLAG_BYTE_POSITION) |
-            (@as(u8, if (self.half_carry) 1 else 0) << HALF_CARRY_FLAG_BYTE_POSITION) |
-            (@as(u8, if (self.carry) 1 else 0) << CARRY_FLAG_BYTE_POSITION);
+const ArithmeticTarget = enum {
+    A,
+    B,
+    C,
+    D,
+    E,
+    H,
+    L,
+};
+
+const Instruction = union(enum) {
+    ADD: ArithmeticTarget,
+};
+
+const CPU = struct {
+    reg: Registers = .{},
+
+    pub fn execute(self: *CPU, instruction: Instruction) void {
+        switch (instruction) {
+            Instruction.ADD => |target| {
+                switch (target) {
+                    ArithmeticTarget.C => {
+                        const old = self.reg.a;
+                        const operand = self.reg.c;
+                        const result = @addWithOverflow(old, operand);
+                        self.reg.a = result[0];
+                        self.reg.f.flags.zero = @intCast(@intFromBool(result[0] == 0));
+                        self.reg.f.flags.carry = result[1];
+                        self.reg.f.flags.halfCarry = @intCast(@intFromBool(((old & 0xF) + (operand & 0xF)) > 0xF));
+                        self.reg.f.flags.subtract = 0;
+                    },
+                    else => {
+                        std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+                    },
+                }
+            },
+        }
     }
 
-    pub fn fromU8(byte: u8) Flags {
-        return Flags{
-            .zero = ((byte >> ZERO_FLAG_BYTE_POSITION) & 0b1) != 0,
-            .subtract = ((byte >> SUBTRACT_FLAG_BYTE_POSITION) & 0b1) != 0,
-            .half_carry = ((byte >> HALF_CARRY_FLAG_BYTE_POSITION) & 0b1) != 0,
-            .carry = ((byte >> CARRY_FLAG_BYTE_POSITION) & 0b1) != 0,
-        };
+    pub inline fn zero(self: *const CPU) bool {
+        return self.reg.f.flags.zero == 1;
+    }
+    pub inline fn carry(self: *const CPU) bool {
+        return self.reg.f.flags.carry == 1;
+    }
+    pub inline fn halfCarry(self: *const CPU) bool {
+        return self.reg.f.flags.halfCarry == 1;
+    }
+    pub inline fn subtract(self: *const CPU) bool {
+        return self.reg.f.flags.subtract == 1;
     }
 };
 
@@ -113,7 +156,7 @@ test "16-bit registers" {
         .c = 0x56,
         .d = 0x78,
         .e = 0x9A,
-        .f = 0xBC,
+        .f = .{ .raw = 0xBC },
         .h = 0xDE,
         .l = 0xF0,
     };
@@ -127,13 +170,23 @@ test "16-bit registers" {
     try std.testing.expectEqual(regs.getHL(), 0x1234);
 }
 
-test "flags register" {
-    var flags = Flags{
-        .zero = true,
-        .subtract = false,
-        .half_carry = true,
-        .carry = false,
-    };
-    try std.testing.expectEqual(flags.toU8(), 0b10100000);
-    try std.testing.expectEqual(flags, Flags.fromU8(0b10100000));
+test "add instruction" {
+    var cpu = CPU{};
+    cpu.reg.a = 250;
+    cpu.reg.c = 10;
+    const inst = Instruction{ .ADD = .C };
+
+    cpu.execute(inst);
+
+    try std.testing.expectEqual(cpu.reg.a, 4);
+    try std.testing.expectEqual(cpu.carry(), true);
+
+    // Non-overflowing add too
+    cpu = CPU{};
+    cpu.reg.a = 5;
+    cpu.reg.c = 3;
+    cpu.execute(inst);
+
+    try std.testing.expectEqual(cpu.reg.a, 8);
+    try std.testing.expectEqual(cpu.carry(), false);
 }
